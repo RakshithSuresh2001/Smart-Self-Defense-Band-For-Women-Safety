@@ -1,0 +1,182 @@
+//#define USE_ARDUINO_INTERRUPTS true
+// Include necessary libraries
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x27,16,2);
+#include "BluetoothSerial.h"
+
+#include <TinyGPS++.h>
+#include <PulseSensorPlayground.h>
+ 
+// Constants
+const int PULSE_SENSOR_PIN = 36;  
+const int LED_PIN = 13;          
+const int THRESHOLD = 3000;       
+int sw=2;
+int relay=4;
+int Buzzer=15;
+
+
+BluetoothSerial serialBT;
+char cmd;
+
+// Create PulseSensorPlayground object
+PulseSensorPlayground pulseSensor;
+
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+#define ONE_WIRE_BUS 5
+
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+float temperature;
+
+TinyGPSPlus gps;
+double Lon,Lat;
+
+void SEND_SMS(String num, String str );
+ 
+void setup() 
+{
+  // Initialize Serial Monitor
+  Serial.begin(9600);
+  Serial2.begin(9600);
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.print(" WOMEN SAFETY");
+  lcd.setCursor(0,1);
+  lcd.print("   SYSTEM...");
+  delay(1000);
+  pinMode(sw,INPUT);
+  pinMode(relay,OUTPUT);
+  digitalWrite(relay,LOW);
+  pinMode(Buzzer,OUTPUT);
+  digitalWrite(Buzzer,LOW);
+  // Configure PulseSensor
+  pulseSensor.analogInput(PULSE_SENSOR_PIN);
+  pulseSensor.blinkOnPulse(LED_PIN);
+  pulseSensor.setThreshold(THRESHOLD);
+ 
+  // Check if PulseSensor is initialized
+  if (pulseSensor.begin()) 
+  {
+    Serial.println("PulseSensor object created successfully!");
+  }
+  SEND_SMS("+919148530992","WOMEN SAFETY DEVICE.....");
+  delay(2000);
+}
+void loop() 
+{
+ if(serialBT.available()){
+   cmd = serialBT.read();
+ }
+ if(cmd == '1' ){
+   digitalWrite(relay, HIGH);
+ }
+ if(cmd == '0' ){
+   digitalWrite(relay, LOW);
+ }
+  // Get the current Beats Per Minute (BPM)
+  int currentBPM = pulseSensor.getBeatsPerMinute();
+ 
+  // Check if a heartbeat is detected
+  if (pulseSensor.sawStartOfBeat()) 
+  {
+    if(currentBPM>130)
+    {
+      currentBPM=map(currentBPM,130,200,60,120);
+      Serial.print("HB: ");
+      Serial.println(currentBPM);
+      lcd.clear();
+      lcd.print("HB="+String(currentBPM));
+      delay(1000);         
+    }
+    else
+    {
+//    Serial.println("♥ A HeartBeat Happened!");
+    Serial.print("BPM: ");
+    Serial.println(currentBPM);
+    lcd.clear();
+    lcd.print("HB="+String(currentBPM));
+    delay(1000);
+//    Serial.println(HB);
+    }
+   
+  }
+ 
+  // Add a small delay to reduce CPU usage
+  delay(20);
+  sensors.requestTemperatures(); 
+  temperature = sensors.getTempCByIndex(0);
+  Serial.print("Temperature: ");
+  Serial.println(temperature);
+  lcd.clear();
+  lcd.print("TEMP:"+String(temperature));
+  delay(1000); 
+  gps_check(); 
+  sw_check(); 
+}
+void gps_check(){
+  // This sketch displays information every time a new sentence is correctly encoded.
+  Lat=12.9569;
+  Lon=77.5507;
+   while(Serial.available() > 0){
+    gps.encode(Serial.read());
+    if (gps.location.isUpdated()){
+      Lat=gps.location.lat(), 6;
+      Lon=gps.location.lng(), 6;
+      Serial.print("Latitude= "); 
+      Serial.print(Lat);
+      Serial.print(" Longitude= "); 
+      Serial.println(Lon);
+    }
+  }
+  
+}
+void sw_check()
+{
+  int swvalue=digitalRead(sw);
+  Serial.print("irval="+String(swvalue));
+  if(swvalue==LOW)
+  {
+    lcd.clear();
+    lcd.print("EMERGENCEY");
+    SEND_SMS("9148530992","need help");
+    digitalWrite(Buzzer,HIGH);
+  digitalWrite(relay,HIGH);
+  String one = "PERSON LOCATION AT:https://www.google.com/search?q=";
+  String two = "," ;   
+  String message = one +String(Lat) +two + String(Lon);
+        
+        // Convert String to char array
+  int str_len = message.length() + 1;
+  char textmessage[str_len];
+  message.toCharArray(textmessage,str_len);
+  Serial.println(textmessage);
+  delay(1000);
+  SEND_SMS("+919148530992",String(textmessage));
+  delay(1000);
+  digitalWrite(Buzzer,LOW);
+  digitalWrite(relay,LOW);
+  }
+}
+void SEND_SMS(String num, String str )
+{
+    Serial2.println("AT+CMGF=1"); //Sets the GSM Module in Text Mode
+    delay(1000); // Delay of 1000 milli seconds or 1 second
+    
+    Serial2.print("AT+CMGS=\""); // Send the SMS number
+    Serial2.print(num);
+    Serial2.println("\"");
+    delay(1000);
+    
+    Serial2.println(str);// The SMS text you want to send
+    delay(100);
+    
+    Serial2.println((char)26);// ASCII code of CTRL+Z
+    delay(1000);
+
+    Serial.println("SMS Sent..");
+ 
+}
